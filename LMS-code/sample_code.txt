@@ -1,0 +1,416 @@
+
+#1-------------------------------
+
+# @app.route("/generate_question_paper", methods=["GET"])
+# def generate_question_paper():
+#     subject = request.args.get("subject", "pharmacology").lower()
+#     chapter = request.args.get("chapter", "").lower()  # MARKED CHANGE
+#     count = int(request.args.get("count", 10))
+#     refresh = request.args.get("refresh", "false").lower() == "true"
+
+#     key = f"{subject}_{chapter}_{count}"   # MARKED CHANGE (unique cache key)
+
+#     if not refresh and key in session_cache:   # MARKED CHANGE
+#         paper = session_cache[key]
+#         return jsonify({"subject": subject, "paper": paper})
+
+#     service = get_drive_service()
+#     prev_id = find_folder_id(service, PREV_FOLDER)
+#     books_id = find_folder_id(service, BOOKS_FOLDER)
+
+#     prev_text, book_text = "", ""
+
+#     if prev_id:
+#         files = list_files(service, prev_id)
+#         subject_files = [f for f in files if subject in f['name'].lower()]
+#         if not subject_files:
+#             subject_files = files[:2]
+#         for f in subject_files[:2]:
+#             prev_text += download_text(service, f['id'], refresh=refresh) + "\n"
+
+#     if books_id:
+#         files = list_files(service, books_id)
+#         subject_files = [
+#             f for f in files
+#             if subject in f['name'].lower() and chapter in f['name'].lower()
+#         ]
+#         if not subject_files:
+#             subject_files = files[:1]
+#         for f in subject_files[:1]:
+#             book_text += download_text(service, f['id'], refresh=refresh) + "\n"
+
+#     # --- STEP 1: Generate Questions ---
+#     prompt_q = f"""
+#     You are an experienced exam setter.
+#     Subject: {subject}, Chapter: {chapter}.
+#     Use past papers and book references.
+
+#     Past Papers:
+#     {prev_text[:5000]}
+
+#     Book Content:
+#     {book_text[:5000]}
+
+#     Task: Generate a {count}-question exam paper.
+#     Include essays, short notes, and MCQs.
+#     Format clearly with numbering.
+#     """
+
+#     openai.api_key = os.getenv("OPENAI_API_KEY")
+#     client = OpenAI()
+#     resp_q = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_q}],
+#         max_tokens=1500,
+#         temperature=0.7
+#     )
+#     questions = getattr(resp_q.choices[0].message, "content", "No content returned")
+
+#     # --- STEP 2: Generate Answers ---
+#     prompt_a = f"""
+#     Provide correct, concise answers for the following exam questions:
+
+#     {questions}
+#     """
+#     resp_a = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_a}],
+#         max_tokens=2000,
+#         temperature=0.7
+#     )
+#     answers = getattr(resp_a.choices[0].message, "content", "No answers returned")
+
+#     # --- SAVE TO DB ---
+#     save_question_paper(subject, chapter, questions, answers)  # MARKED CHANGE
+
+#     # --- RETURN ONLY QUESTIONS TO USER ---
+#     return Response(
+#     json.dumps({"subject": subject, "paper": questions}, indent=4),
+#     mimetype="application/json"
+#     )
+
+    #return jsonify({"subject": subject, "paper": questions})  # MARKED CHANGE
+
+#2------------------------------
+
+# @app.route("/generate_question_paper", methods=["GET"])
+# def generate_question_paper():
+#     subject = request.args.get("subject", "pharmacology").lower()
+#     chapter = request.args.get("chapter", "").lower()  # MARKED CHANGE
+#     count = int(request.args.get("count", 10))
+#     refresh = request.args.get("refresh", "false").lower() == "true"
+
+#     key = f"{subject}_{chapter}_{count}"   # MARKED CHANGE (unique cache key)
+
+#     if not refresh and key in session_cache:   # MARKED CHANGE
+#         paper = session_cache[key]
+#         return jsonify({"subject": subject, "paper": paper})
+
+#     service = get_drive_service()
+#     prev_id = find_folder_id(service, PREV_FOLDER)
+#     books_id = find_folder_id(service, BOOKS_FOLDER)
+
+#     prev_text, book_text = "", ""
+
+#     if prev_id:
+#         files = list_files(service, prev_id)
+#         subject_files = [f for f in files if subject in f['name'].lower()]
+#         if not subject_files:
+#             subject_files = files[:2]
+#         for f in subject_files[:2]:
+#             prev_text += download_text(service, f['id'], refresh=refresh) + "\n"
+
+#     if books_id:
+#         # --- Step 1: list all child folders under Books (MARKED CHANGE) ---
+#         query = f"'{books_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+#         results = service.files().list(q=query, fields="files(id, name)").execute()
+#         subject_folders = results.get("files", [])
+
+#         # --- Step 2: find the right subject folder ignoring case (MARKED CHANGE) ---
+#         subject_folder_id = None
+#         for f in subject_folders:
+#             if f["name"].lower() == subject.lower():
+#                 subject_folder_id = f["id"]
+#                 break
+
+#         if subject_folder_id:
+#             files = list_files(service, subject_folder_id)
+#             subject_files = [
+#                 f for f in files
+#                 if chapter.replace(".pdf", "").lower() in f["name"].lower()
+#             ]
+#             if not subject_files:
+#                 app.logger.warning(f"No files matched for chapter={chapter}, subject={subject}")
+#             else:
+#                 for f in subject_files[:1]:
+#                     book_text += download_text(service, f["id"], refresh=refresh) + "\n"
+#                 # --- DEBUG: log which file matched (MARKED CHANGE) ---
+#                 app.logger.info(
+#                     f"[DEBUG] Using file: {subject_files[0]['name']}, size={len(book_text)} chars"
+#                 )
+#         else:
+#             app.logger.warning(f"Subject folder not found under Books for subject={subject}")
+
+
+#     # --- Extract keywords from the chapter ---
+#     keyword_prompt = f"""
+#     Extract a comma-separated list of the most important medical terms, 
+#     drug classes, and key topics from the following text.
+#     Only include words that are explicitly present in the text.
+#     Text:
+#     {book_text[:3000]}
+#     """
+#     client = OpenAI()
+#     kw_resp = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": keyword_prompt}],
+#         max_tokens=200,
+#         temperature=0.3
+#     )
+#     keywords = getattr(kw_resp.choices[0].message, "content", "")
+#     keywords_list = [k.strip() for k in keywords.split(",") if k.strip()]
+
+#     # --- DEBUG LOGGING (MARKED CHANGE) ---
+#     app.logger.info(f"[DEBUG] Extracted Keywords for Chapter: {chapter}")
+#     app.logger.info(f"Keywords: {keywords_list}")
+
+
+
+#     # --- STEP 1: Generate Questions ---
+        
+#     prompt_q = f"""
+#     You are an experienced medical exam setter.
+
+#     Subject: {subject}, Chapter: {chapter}.
+
+#     --- Instructions ---
+#     1. Use the **past papers below ONLY as formatting/style reference** 
+#        (structure, marks distribution, sections like Essay/Short Notes/MCQs).
+#     2. Use the **book content below as the ONLY source of knowledge**.
+#     3. STRICT RULE: Questions must come **only from the given chapter**.
+#        Do NOT include topics that are not mentioned in the chapter content.
+#     4. Limit yourself to the following extracted keywords and their context:
+#        {", ".join(keywords_list[:30])}
+#     5. Avoid repeating or rephrasing the same question.
+#     6. Include a mix of essays, short notes, and MCQs.
+#     7. Format clearly with numbering.
+
+#     --- Past Papers (style reference only) ---
+#     {prev_text[:3000]}
+
+#     --- Book Content (chapter knowledge source) ---
+#     {book_text[:3000]}
+
+#     --- Task ---
+#     Generate a {count}-question exam paper that follows the past-paper 
+#     structure but strictly uses the chapter content above.
+#     """
+
+
+#     openai.api_key = os.getenv("OPENAI_API_KEY")
+#     client = OpenAI()
+#     resp_q = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_q}],
+#         max_tokens=1500,
+#         temperature=0.7
+#     )
+#     raw_questions = getattr(resp_q.choices[0].message, "content", "No content returned")
+
+#     # --- Deduplicate questions while preserving order ---
+#     seen = set()
+#     final_questions = []
+#     for line in raw_questions.split("\n"):
+#         cleaned = line.strip()
+#         if not cleaned:
+#             continue
+#         if cleaned not in seen:
+#             final_questions.append(cleaned)
+#             seen.add(cleaned)
+#     questions = "\n".join(final_questions)
+
+#     # --- STEP 2: Generate Answers ---
+#     prompt_a = f"""
+#     Provide correct, concise answers for the following exam questions.
+#     Only use the chapter content provided earlier (do not hallucinate):
+
+#     {questions}
+#     """
+#     resp_a = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_a}],
+#         max_tokens=2000,
+#         temperature=0.7
+#     )
+#     answers = getattr(resp_a.choices[0].message, "content", "No answers returned")
+
+#     # --- SAVE TO DB ---
+#     save_question_paper(subject, chapter, questions, answers)
+
+#     # --- RETURN ONLY QUESTIONS TO USER ---
+#     return Response(
+#         json.dumps({"subject": subject, "paper": questions}, indent=4),
+#         mimetype="application/json"
+#     )
+
+
+# 3 -------------------------------------------------------------------------------
+
+# @app.route("/generate_question_paper", methods=["GET"])
+# def generate_question_paper():
+#     subject = request.args.get("subject", "pharmacology").lower()
+#     chapter = request.args.get("chapter", "").lower()  # MARKED CHANGE
+#     count = int(request.args.get("count", 10))
+#     refresh = request.args.get("refresh", "false").lower() == "true"
+
+#     key = f"{subject}_{chapter}_{count}"   # MARKED CHANGE (unique cache key)
+
+#     if not refresh and key in session_cache:   # MARKED CHANGE
+#         paper = session_cache[key]
+#         return jsonify({"subject": subject, "paper": paper})
+
+#     service = get_drive_service()
+#     prev_id = find_folder_id(service, PREV_FOLDER)
+#     books_id = find_folder_id(service, BOOKS_FOLDER)
+
+#     prev_text, book_text = "", ""
+
+#     if prev_id:
+#         files = list_files(service, prev_id)
+#         subject_files = [f for f in files if subject in f['name'].lower()]
+#         if not subject_files:
+#             subject_files = files[:2]
+#         for f in subject_files[:2]:
+#             prev_text += download_text(service, f['id'], refresh=refresh) + "\n"
+
+#     if books_id:
+#         # --- Step 1: list all child folders under Books (MARKED CHANGE) ---
+#         query = f"'{books_id}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+#         results = service.files().list(q=query, fields="files(id, name)").execute()
+#         subject_folders = results.get("files", [])
+
+#         # --- Step 2: find the right subject folder ignoring case (MARKED CHANGE) ---
+#         subject_folder_id = None
+#         for f in subject_folders:
+#             if f["name"].lower() == subject.lower():
+#                 subject_folder_id = f["id"]
+#                 break
+
+#         if subject_folder_id:
+#             files = list_files(service, subject_folder_id)
+#             subject_files = [
+#                 f for f in files
+#                 if chapter.replace(".pdf", "").lower() in f["name"].lower()
+#             ]
+#             if not subject_files:
+#                 app.logger.warning(f"No files matched for chapter={chapter}, subject={subject}")
+#             else:
+#                 for f in subject_files[:1]:
+#                     book_text += download_text(service, f["id"], refresh=refresh) + "\n"
+#                 # --- DEBUG: log which file matched (MARKED CHANGE) ---
+#                 app.logger.info(
+#                     f"[DEBUG] Using file: {subject_files[0]['name']}, size={len(book_text)} chars"
+#                 )
+#         else:
+#             app.logger.warning(f"Subject folder not found under Books for subject={subject}")
+
+
+#     # --- Extract keywords from the chapter ---
+#     keyword_prompt = f"""
+#     Extract a comma-separated list of the most important medical terms, 
+#     drug classes, and key topics from the following text.
+#     Only include words that are explicitly present in the text.
+#     Text:
+#     {book_text[:3000]}
+#     """
+#     client = OpenAI()
+#     kw_resp = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": keyword_prompt}],
+#         max_tokens=200,
+#         temperature=0.3
+#     )
+#     keywords = getattr(kw_resp.choices[0].message, "content", "")
+#     keywords_list = [k.strip() for k in keywords.split(",") if k.strip()]
+
+#     # --- DEBUG LOGGING (MARKED CHANGE) ---
+#     app.logger.info(f"[DEBUG] Extracted Keywords for Chapter: {chapter}")
+#     app.logger.info(f"Keywords: {keywords_list}")
+
+
+
+#         # --- STEP 1: Generate Questions (REVERSE CHANGE) ---
+        
+#     prompt_q = f"""
+#     You are an experienced medical exam setter.
+
+#     Subject: {subject}, Chapter: {chapter}.
+
+#     --- Instructions ---
+#     1. Use the **book content below as the ONLY knowledge source**. 
+#        STRICT RULE: All questions must come **only from the given chapter**.
+#     2. Use the **past papers ONLY as formatting/style reference** 
+#        (sections, numbering, marks distribution, MCQ/short/long patterns).
+#     3. Limit yourself to the following extracted keywords and their context:
+#        {", ".join(keywords_list[:30])}
+#     4. Avoid repeating or rephrasing the same question.
+#     5. Ensure a balanced mix of essays, short notes, and MCQs.
+#     6. Format clearly with numbering.
+
+#     --- Book Content (knowledge source) ---
+#     {book_text[:3000]}
+
+#     --- Past Papers (style reference only) ---
+#     {prev_text[:3000]}
+
+#     --- Task ---
+#     Generate a {count}-question exam paper that strictly uses the chapter 
+#     content but mirrors the formatting and style of past papers.
+#     """
+
+
+#     openai.api_key = os.getenv("OPENAI_API_KEY")
+#     client = OpenAI()
+#     resp_q = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_q}],
+#         max_tokens=1500,
+#         temperature=0.7
+#     )
+#     raw_questions = getattr(resp_q.choices[0].message, "content", "No content returned")
+
+#     # --- Deduplicate questions while preserving order ---
+#     seen = set()
+#     final_questions = []
+#     for line in raw_questions.split("\n"):
+#         cleaned = line.strip()
+#         if not cleaned:
+#             continue
+#         if cleaned not in seen:
+#             final_questions.append(cleaned)
+#             seen.add(cleaned)
+#     questions = "\n".join(final_questions)
+
+#     # --- STEP 2: Generate Answers ---
+#     prompt_a = f"""
+#     Provide correct, concise answers for the following exam questions.
+#     Only use the chapter content provided earlier (do not hallucinate):
+
+#     {questions}
+#     """
+#     resp_a = client.chat.completions.create(
+#         model="gpt-4o-mini",
+#         messages=[{"role": "user", "content": prompt_a}],
+#         max_tokens=2000,
+#         temperature=0.7
+#     )
+#     answers = getattr(resp_a.choices[0].message, "content", "No answers returned")
+
+#     # --- SAVE TO DB ---
+#     save_question_paper(subject, chapter, questions, answers)
+
+#     # --- RETURN ONLY QUESTIONS TO USER ---
+#     return Response(
+#         json.dumps({"subject": subject, "paper": questions}, indent=4),
+#         mimetype="application/json"
+#     )
