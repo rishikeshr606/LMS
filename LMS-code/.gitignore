@@ -1,4 +1,8 @@
-LMS-code/.env
-LMS-code/token.json
-LMS-code/credentials.json
-
+.env
+token.json
+credentials.json
+*.log
+__pycache__/
+venv/
+*.pyc
+*.db
