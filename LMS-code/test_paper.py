@@ -4,6 +4,7 @@ import io
 import sqlite3
 import pdfplumber
 from flask import Flask, request, jsonify, Response
+from flask_cors import CORS
 import json
 import pandas as pd
 
@@ -12,14 +13,21 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload
 
+from dotenv import load_dotenv
+load_dotenv() 
+
+
 import openai
 from openai import OpenAI
+client = OpenAI()
 
 SCOPES = ['https://www.googleapis.com/auth/drive.readonly']
 PREV_FOLDER = "Previous_Year_Question_Papers"
 BOOKS_FOLDER = "Books"
 
 app = Flask(__name__)
+CORS(app)
+
 
 ### --- SQLite Setup ---
 def init_db():
@@ -129,8 +137,8 @@ def download_text(service, file_id, refresh=False):
 
     text = []
     with pdfplumber.open(bio) as pdf:
-        #for page in pdf.pages:
-        for i, page in enumerate(pdf.pages[:5]):
+        for page in pdf.pages:
+        #for i, page in enumerate(pdf.pages[:5]):
             text.append(page.extract_text() or "")
     final_text = "\n".join(text)
 
@@ -204,7 +212,7 @@ def generate_question_paper():
     Text:
     {book_text[:3000]}
     """
-    client = OpenAI()
+    #client = OpenAI()
     kw_resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": keyword_prompt}],
@@ -347,7 +355,7 @@ def submit_answers():
     4. Give an overall percentage and brief remarks (strengths, weaknesses, advice).
     """
 
-    client = OpenAI()
+    #client = OpenAI()
     resp = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=[{"role": "user", "content": eval_prompt}],

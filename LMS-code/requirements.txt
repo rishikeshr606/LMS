@@ -1,7 +1,36 @@
-Flask
-google-api-python-client
-google-auth
-google-auth-oauthlib
-pdfplumber
-openai
-pandas
+# --- Web frameworks ---
+Flask==3.0.3
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.9
+
+# --- Google API ---
+google-api-python-client==2.149.0
+google-auth==2.35.0
+google-auth-oauthlib==1.2.1
+
+# --- AI / OpenAI ---
+openai==1.52.2
+langchain-chroma==0.1.4
+langchain==0.3.2
+python-dotenv==1.0.1
+
+# --- Embeddings / Torch / CLIP ---
+torch>=2.3.0
+open-clip-torch==2.24.0
+scikit-learn==1.5.2
+numpy==1.26.4
+
+# --- Data / Files ---
+pandas==2.2.2
+pdfplumber==0.11.4
+Pillow==10.4.0
+
+# --- Video / Image ---
+opencv-python==4.10.0.84
+
+# --- Utilities ---
+python-dateutil==2.9.0.post0
+
+
+pip install PyMuPDF
