@@ -4,6 +4,7 @@ import base64
 import shutil
 import time
 import gc
+import hashlib   # 🔹 CHANGED
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -13,7 +14,7 @@ from langchain_chroma import Chroma
 from langchain.docstore.document import Document
 
 from model_manager import ModelManager
-from frame_utils import extract_frames   # NEW import
+from frame_utils import extract_frames   
 
 # ------------- CONFIG -------------
 CHROMA_DB_PATH = "./chroma_db_multimodal"
@@ -29,20 +30,21 @@ model = ModelManager()
 # if os.path.exists(CHROMA_DB_PATH):
 #     shutil.rmtree(CHROMA_DB_PATH)
 
-def safe_rmtree(path, retries=5, delay=1):
-    for i in range(retries):
-        try:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-            break
-        except PermissionError:
-            time.sleep(delay)
+# def safe_rmtree(path, retries=5, delay=1):
+#     for i in range(retries):
+#         try:
+#             if os.path.exists(path):
+#                 shutil.rmtree(path)
+#             break
+#         except PermissionError:
+#             time.sleep(delay)
 
 vectordb = None
 
 gc.collect()
 
-safe_rmtree(CHROMA_DB_PATH)
+# REMOVE THIS: it was deleting DB on every run
+#safe_rmtree(CHROMA_DB_PATH)
 
 
 vector_db = Chroma(
@@ -52,9 +54,22 @@ vector_db = Chroma(
 )
 
 
+# 🔹 CHANGED: Utility to compute hash from text or file content
+def compute_content_hash(content: str = None, file_path: str = None) -> str:
+    hasher = hashlib.sha256()
+    if content is not None:
+        hasher.update(content.encode("utf-8"))
+    elif file_path is not None and os.path.exists(file_path):
+        with open(file_path, "rb") as f:
+            while chunk := f.read(8192):
+                hasher.update(chunk)
+    return hasher.hexdigest()
+
+
 # ------------- UPSERT HELPERS -------------
 def add_text_document(text: str, metadata: Dict[str, Any]):
-    doc_id = metadata.get("id") or metadata.get("title") or str(hash(text))
+    #doc_id = metadata.get("id") or metadata.get("title") or str(hash(text))
+    doc_id = compute_content_hash(content=text)   # 🔹 CHANGED
     emb = model.get_text_embedding(text)
     vector_db._collection.upsert(
         ids=[doc_id], embeddings=[emb], metadatas=[metadata], documents=[text]
@@ -62,7 +77,8 @@ def add_text_document(text: str, metadata: Dict[str, Any]):
     print(f"Inserted TEXT doc '{doc_id}'")
 
 def add_image_document(image_path: str, metadata: Dict[str, Any], caption: str = ""):
-    doc_id = metadata.get("id") or Path(image_path).stem
+    #doc_id = metadata.get("id") or Path(image_path).stem
+    doc_id = compute_content_hash(file_path=image_path)   # 🔹 CHANGED
     meta = dict(metadata)
     meta["file_path"] = str(Path(image_path).resolve())
     meta["image_url"] = f"/static/{Path(image_path).name}"
@@ -74,7 +90,13 @@ def add_image_document(image_path: str, metadata: Dict[str, Any], caption: str =
     print(f"Inserted IMAGE doc '{doc_id}'")
 
 def add_multimodal_document(text: str, image_path: str, metadata: Dict[str, Any]):
-    doc_id = metadata.get("id") or str(hash(text + image_path))
+    #doc_id = metadata.get("id") or str(hash(text + image_path))
+
+    # 🔹 CHANGED: combined hash of text + image content
+    text_hash = compute_content_hash(content=text)
+    image_hash = compute_content_hash(file_path=image_path)
+    doc_id = compute_content_hash(content=text_hash + image_hash)
+
     meta = dict(metadata)
     meta["file_path"] = str(Path(image_path).resolve())
     meta["image_url"] = f"/static/{Path(image_path).name}"

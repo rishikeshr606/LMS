@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 from typing import List, Optional
 import uvicorn 
+import requests
 
 # ----------------- Processing helpers -----------------
 # Atomic upsert helpers and the Chroma DB live here (no circular import)
@@ -74,6 +75,30 @@ async def insert_pdf(file: UploadFile, title: Optional[str] = None):
     add_pdf_document(str(filepath), metadata, add_text_document)
 
     return {"status": "success", "file": str(filepath)}
+
+
+#----Document ingestion through Supabase---------------(not used in local for now!)
+
+@app.post("/supabase/ingest")
+async def ingest_from_supabase(file_url: str, file_type: str, title: Optional[str] = None):
+    filepath = UPLOAD_DIR / Path(file_url).name
+    r = requests.get(file_url)
+    with open(filepath, "wb") as f:
+        f.write(r.content)
+
+    metadata = {"id": filepath.stem, "title": title or filepath.name}
+
+    if file_type == "pdf":
+        add_pdf_document(str(filepath), metadata, add_text_document)
+    elif file_type == "image":
+        add_image_document(str(filepath), metadata, caption="From Supabase")
+    elif file_type == "video":
+        add_video_document(str(filepath), metadata, fps=1)
+    else:
+        return {"status": "error", "message": "Unsupported file type"}
+
+    return {"status": "success", "file": str(filepath)}
+
 
 
 # ---------- VIEW CONTENT ----------

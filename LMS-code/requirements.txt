@@ -32,5 +32,4 @@ opencv-python==4.10.0.84
 # --- Utilities ---
 python-dateutil==2.9.0.post0
 
-
-pip install PyMuPDF
+PyMuPDF
