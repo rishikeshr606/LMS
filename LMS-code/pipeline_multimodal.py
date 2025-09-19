@@ -15,8 +15,9 @@ from upsert_helpers import (
     add_video_document,
     vector_db,
     model,
+    compute_content_hash,   # NEW: import content hashing
 )
-from pdf_utils import add_pdf_document  # NEW: for PDF support
+from pdf_utils import add_pdf_document  # for PDF support
 
 # ------------- CONFIG -------------
 TOP_K_DEFAULT = 3
@@ -32,6 +33,15 @@ def load_images_from_folder(folder_path: str):
         if img_file.suffix.lower() in [
             ".jpg", ".jpeg", ".png", ".bmp", ".gif", ".tiff", ".webp"
         ]:
+
+            # NEW: compute hash-based ID
+            doc_id = compute_content_hash(str(img_file))
+            # NEW: check if already in DB
+            existing = vector_db._collection.get(ids=[doc_id])
+            if existing and existing["ids"]:
+                print(f"Skipping IMAGE (already exists): {img_file.name}")
+                continue
+
             metadata = {"id": img_file.stem, "title": img_file.name}
             add_image_document(str(img_file), metadata, caption="Dataset image")
 
@@ -40,12 +50,29 @@ def load_texts_from_folder(folder_path: str):
     for txt_file in folder.glob("*.txt"):
         with open(txt_file, "r", encoding="utf-8") as f:
             text_content = f.read().strip()
+
+        # NEW: compute hash
+        doc_id = compute_content_hash(text_content)
+        # NEW: check if already in DB
+        existing = vector_db._collection.get(ids=[doc_id])
+        if existing and existing["ids"]:
+            print(f"Skipping TEXT (already exists): {txt_file.name}")
+            continue
+
         metadata = {"id": txt_file.stem, "title": txt_file.name}
         add_text_document(text_content, metadata)
 
 def load_pdfs_from_folder(folder_path: str):
     folder = Path(folder_path)
     for pdf_file in folder.glob("*.pdf"):
+
+        # NEW: hash on file content
+        doc_id = compute_content_hash(str(pdf_file))
+        existing = vector_db._collection.get(ids=[doc_id])
+        if existing and existing["ids"]:
+            print(f"Skipping PDF (already exists): {pdf_file.name}")
+            continue
+
         metadata = {"id": pdf_file.stem, "title": pdf_file.name}
         add_pdf_document(str(pdf_file), metadata)
 

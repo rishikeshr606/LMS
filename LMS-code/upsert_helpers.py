@@ -115,5 +115,15 @@ def add_video_document(video_path: str, metadata: Dict[str, Any], fps: int = 1):
     extract_frames(video_path, frames_dir, fps)
 
     for frame_file in Path(frames_dir).glob("*.jpg"):
-        frame_metadata = {**metadata, "frame": frame_file.name, "video": video_path}
+
+        # CHANGED: compute hash for each frame
+        frame_id = compute_content_hash(file_path=str(frame_file))
+
+        # CHANGED: check if already in DB
+        existing = vector_db._collection.get(ids=[frame_id])
+        if existing and existing["ids"]:
+            print(f"Skipping FRAME (already exists): {frame_file.name}")
+            continue
+
+        frame_metadata = {**metadata, "frame": frame_file.name, "video": video_path, "id": frame_id}
         add_image_document(str(frame_file), frame_metadata, caption="Video frame")
