@@ -6,6 +6,10 @@ from pathlib import Path
 from typing import List, Optional
 import uvicorn 
 import requests
+from pydantic import BaseModel
+
+# NEW: Redis
+#import redis
 
 # ----------------- Processing helpers -----------------
 # Atomic upsert helpers and the Chroma DB live here (no circular import)
@@ -31,6 +35,23 @@ app = FastAPI(title="Multimodal RAG API", version="1.0")
 
 UPLOAD_DIR = Path("./uploads")
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+
+# # ---------- REDIS CHAT HISTORY ----------
+# # NEW: connect to Redis (adjust host/port if in Docker)
+# redis_client = redis.Redis(host="localhost", port=6379, db=0, decode_responses=True)
+
+# # NEW: helper to namespace keys per project + college + user
+# def make_chat_key(college_id: str, user_id: str) -> str:
+#     return f"rag:college:{college_id}:user:{user_id}:history"
+
+
+# NEW: request body schema
+class RAGRequest(BaseModel):
+    question: str
+    top_k: int = 3
+    college_id: str = "default_college"
+    user_id: str = "default_user"
 
 
 # ---------- INSERT DATA ----------
@@ -104,7 +125,7 @@ async def ingest_from_supabase(file_url: str, file_type: str, title: Optional[st
 # ---------- VIEW CONTENT ----------
 @app.get("/chroma/list")
 async def list_chroma(limit: int = 10):
-    results = vector_db._collection.get(limit=limit)
+    results = vector_db._collection.get(limit=100)
     return {
         "ids": results["ids"],
         "metadatas": results["metadatas"],
@@ -119,14 +140,62 @@ async def delete_chroma(ids: Optional[List[str]] = None):
         vector_db._collection.delete(ids=ids)
         return {"status": "deleted", "ids": ids}
     else:
-        vector_db._collection.delete(where={})  # delete all
+        # Fetch all existing IDs
+        all_data = vector_db._collection.get(include=[])
+        all_ids = all_data.get("ids", [])
+        if all_ids:
+            vector_db._collection.delete(ids=all_ids)
         return {"status": "cleared all"}
 
 
-# ---------- RAG ANSWERING ----------
+
+
+# ---------- 1:- RAG ANSWERING ----------
+# @app.post("/rag/answer")
+# async def rag_answer(question: str, top_k: int = 3):
+#     result = multimodal_rag_answer(question, top_k=top_k)
+#     return JSONResponse(result)
+
+
+# ---------- 2:- RAG ANSWERING WITH CHAT HISTORY ----------
+# @app.post("/rag/answer")
+# async def rag_answer(
+#     question: str,
+#     top_k: int = 3,
+#     college_id: str = "default_college",  # NEW
+#     user_id: str = "default_user"         # NEW
+# ):
+#     # NEW: fetch chat history
+#     chat_key = make_chat_key(college_id, user_id)
+#     history = redis_client.lrange(chat_key, 0, -1) or []
+
+#     # NEW: include history context if available
+#     context = "\n".join(history[-5:])  # last 5 turns for context
+
+#     # Existing retrieval logic
+#     result = multimodal_rag_answer(question, top_k=top_k)
+
+#     # NEW: store question+answer in history
+#     redis_client.rpush(chat_key, f"User: {question}")
+#     redis_client.rpush(chat_key, f"Assistant: {result['answer']}")
+
+#     # Return with history
+#     return JSONResponse({
+#         **result,
+#         "chat_history": history + [f"User: {question}", f"Assistant: {result['answer']}"]
+#     })
+
+
+# ---------- 3:- RAG ANSWERING WITH CHAT HISTORY ----------
 @app.post("/rag/answer")
-async def rag_answer(question: str, top_k: int = 3):
-    result = multimodal_rag_answer(question, top_k=top_k)
+async def rag_answer(req: RAGRequest):  # 🔹 CHANGED: accept the request model
+    # 🔹 CHANGED: build session_id from college_id + user_id
+    session_id = f"{req.college_id}:{req.user_id}"
+
+    # 🔹 CHANGED: call pipeline with session_id (pipeline expects session_id)
+    result = multimodal_rag_answer(req.question, session_id=session_id, top_k=req.top_k)
+
+    # The pipeline now handles reading/saving history in Redis and returns full result
     return JSONResponse(result)
 
 

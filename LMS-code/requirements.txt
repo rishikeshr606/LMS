@@ -33,3 +33,8 @@ opencv-python==4.10.0.84
 python-dateutil==2.9.0.post0
 
 PyMuPDF
+redis
+
+git+https://github.com/openai/whisper.git
+# or for faster GPU inference
+openai-whisper

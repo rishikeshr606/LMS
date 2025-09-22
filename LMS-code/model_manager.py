@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image
 import open_clip
 from sklearn.metrics.pairwise import cosine_similarity
+import whisper 
 
 class ModelManager:
     _instance = None
@@ -123,6 +124,19 @@ class ModelManager:
         v = (t + i) / 2.0
         n = np.linalg.norm(v)
         return (v / n).astype(np.float32) if n > 0 else v.astype(np.float32)
+
+    # NEW: Video transcription using Whisper
+    def transcribe_video(self, video_path: str) -> str:
+        """
+        Extract speech text from video for multimodal context.
+        """
+        try:
+            model = whisper.load_model("base")  # or "small", "medium", "large"
+            result = model.transcribe(video_path)
+            return result.get("text", "").strip()
+        except Exception as e:
+            logging.error(f"Error transcribing video {video_path}: {e}")
+            return ""
 
     # ----------------- Unified Multimodal API -----------------
     def get_embedding(self, data) -> np.ndarray:
